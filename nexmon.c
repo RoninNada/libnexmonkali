@@ -313,7 +313,7 @@ socket(int domain, int type, int protocol)
 }
 
 int
-bind(int sockfd, const struct sockaddr *addr, int addrlen)
+my_bind(int sockfd, const struct sockaddr *addr, int addrlen)
 {
     int ret;
     struct sockaddr_ll *sll = (struct sockaddr_ll *) addr;
