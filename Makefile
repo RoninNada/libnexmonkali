@@ -14,15 +14,11 @@ libnexio.a:
 
 clean:
 	rm libnexmonkali.so libnexio.a libnexio.o
-
+	
 install:
-	mount -o rw,remount /system
-	cp libnexmonkali.so /system/xbin
-	chmod 0755 /system/xbin/libnexmonkali.so
-	chmod +x /system/xbin/libnexmonkali.so
-	mount -o ro,remount /system
+	cp libnexmonkali.so /usr/lib/
+	chmod 0755 /usr/lib/libnexmonkali.so
+	chmod +x /usr/lib/libnexmonkali.so
 
 uninstall:
-	mount -o rw,remount /system
-	rm /system/xbin/libnexmonkali.so
-	mount -o ro,remount /system
+	rm /usr/lib/libnexmonkali.so
