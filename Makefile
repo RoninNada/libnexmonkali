@@ -3,9 +3,9 @@ CC = gcc
 CFLAGS = -std=c99 -I./
 LDFLAGS = -shared -fPIC -ldl libnexio.a
 
-all = libnexio.a libnexmonkali.so
+all: libnexio.a libnexmonkali.so
 
-libnexmonkali.so: libnexio.a
+libnexmonkali.so: libnexio.a nexmon.c
 	$(CC) -o libnexmonkali.so $(CFLAGS) nexmon.c $(LDFLAGS)
 
 libnexio.a:
