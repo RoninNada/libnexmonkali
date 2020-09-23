@@ -54,6 +54,12 @@
 #include <nexioctls.h>
 #include <string.h>
 
+typedef unsigned int uint;
+
+#define TYPEDEF_BOOL // define this to make <typedefs.h> not throw an error trying to redefine bool
+#include <typedefs.h>
+#include <bcmwifi_channels.h>
+
 #define WLC_GET_MONITOR                 107
 #define WLC_SET_MONITOR                 108
 
@@ -120,7 +126,7 @@ ioctl(int fd, request_t request, ...)
 
     ret = func_ioctl(fd, request, argp);
     //if (ret < 0) {
-    //    printf("LIBNEXMON: original response: %d, request: 0x%x\n", ret, request);
+    //    fprintf(stderr, "LIBNEXMON: original response: %d, request: 0x%x\n", ret, request);
     //}
 
     switch (request) {
@@ -177,15 +183,60 @@ ioctl(int fd, request_t request, ...)
 
         case SIOCSIWFREQ: // set channel/frequency (Hz)
             {
+                struct iwreq* p_wrq = (struct iwreq*) argp;
+
+		// TODO:
+		// check freq.e == 0
+		// check freq.m < 1000
+		// handle freqs instead of channels
+		// handle alternate bandwidths?
+		// handle upper/lower sidebands?
+                if (!strncmp(p_wrq->ifr_ifrn.ifrn_name, ifname, strlen(ifname))) {
+		    char charbuf[13] = "chanspec";
+		    uint32 *chanspec = (uint32*) &charbuf[9];
+		    uint32 channel;
+		    uint32 band;
+		    uint32 bw;
+		    uint32 ctl_sb;
+
+		    // fprintf(stderr, "SIWFREQ: chan/freq: m=%d e=%d\n", p_wrq->u.freq.m, p_wrq->u.freq.e);
+		    channel = p_wrq->u.freq.m;
+		    band = ((channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G);
+		    bw = WL_CHANSPEC_BW_20;
+		    ctl_sb = 0;
+
+		    *chanspec = (channel | band | bw | ctl_sb);
+		    // fprintf(stderr, "SIWFREQ: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
+		    ret = nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
+                }
+
                 //if (ret < 0)
-                    //printf("LIBNEXMON: SIOCSIWFREQ not implemented\n");
+                    //fprintf(stderr, "LIBNEXMON: SIOCSIWFREQ not fully implemented\n");
             }
             break;
 
         case SIOCGIWFREQ: // get channel/frequency (Hz)
             {
+		struct iwreq* p_wrq = (struct iwreq*) argp;
+
+		if (!strncmp(p_wrq->ifr_ifrn.ifrn_name, ifname, strlen(ifname))) {
+		    char charbuf[9] = "chanspec";
+		    uint16 chanspec;
+		    int32 channel;
+		    ret = nex_ioctl(nexio, WLC_GET_VAR, charbuf, 9, false);
+		    if(ret >= 0) {
+			chanspec = *(uint16 *) charbuf;
+			channel = chanspec & 0xFF;
+			p_wrq->u.freq.e = 0;
+			p_wrq->u.freq.m = channel;
+			// fprintf(stderr, "GIWFREQ: channel=%d\n", channel);
+		    }
+
+		}
+
+
                 //if (ret < 0)
-                    //printf("LIBNEXMON: SIOCGIWFREQ not implemented\n");
+                    //fprintf(stderr, "LIBNEXMON: SIOCGIWFREQ not fully implemented\n");
             }
             break;
     }
