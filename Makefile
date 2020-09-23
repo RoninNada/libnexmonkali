@@ -8,7 +8,7 @@ all: libnexio.a libnexmonkali.so
 libnexmonkali.so: libnexio.a nexmon.c
 	$(CC) -o libnexmonkali.so $(CFLAGS) nexmon.c $(LDFLAGS)
 
-libnexio.a:
+libnexio.a: libnexio.c
 	$(CC) -c libnexio.c
 	ar rcs libnexio.a libnexio.o
 
