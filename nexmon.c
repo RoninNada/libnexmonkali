@@ -54,6 +54,10 @@
 #include <nexioctls.h>
 #include <string.h>
 
+#define __USE_POSIX199309
+#define _POSIX_C_SOURCE 199309L
+#include <time.h>
+
 typedef unsigned int uint;
 
 #define TYPEDEF_BOOL // define this to make <typedefs.h> not throw an error trying to redefine bool
@@ -404,6 +408,13 @@ write(int fd, const void *buf, size_t count)
         memcpy(buf_dup->data, buf, count);
 
         nex_ioctl(nexio, NEX_INJECT_FRAME, buf_dup, count + sizeof(struct inject_frame), true);
+	// this is probably frowned on, but it works on the Nexus 6P
+	// rate-limiting keeps the driver from crashing when doing aireplay-ng
+	struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 50 * 1000000; // 50 ms
+        nanosleep(&ts, NULL);
+
 
         free(buf_dup);
 
