@@ -149,7 +149,7 @@ int nl80211_type()
 {
 	if(_nl80211_type)
 	{
-		fprintf(stderr, "cached\n");
+		// fprintf(stderr, "cached\n");
 		return _nl80211_type;
 	}
 		
@@ -158,14 +158,14 @@ int nl80211_type()
 	struct nl_cache *nl_cache = NULL;
 	struct genl_family *nl80211 = NULL;
 
-	fprintf(stderr, "beginning\n");
+	// fprintf(stderr, "beginning\n");
 	nl_sock = nl_socket_alloc();
-	fprintf(stderr, "nl_sock=%d\n", nl_sock);
+	// fprintf(stderr, "nl_sock=%d\n", nl_sock);
 	if(!nl_sock)
 		return 0;
 
 	rval = genl_connect(nl_sock);
-	fprintf(stderr, "genl_connect=%d\n", rval);
+	// fprintf(stderr, "genl_connect=%d\n", rval);
 	if(rval)
 	{
 		nl_socket_free(nl_sock);
@@ -173,7 +173,7 @@ int nl80211_type()
 	}
 
 	rval = genl_ctrl_alloc_cache(nl_sock, &nl_cache);
-	fprintf(stderr, "genl_ctrl_allocate_cache=%d\n", rval);
+	// fprintf(stderr, "genl_ctrl_allocate_cache=%d\n", rval);
 	if(rval)
 	{
 		nl_socket_free(nl_sock);
@@ -181,12 +181,12 @@ int nl80211_type()
 	}
 
 	nl80211 = genl_ctrl_search_by_name(nl_cache, "nl80211");
-	fprintf(stderr, "genl_ctrl_search_by_name=%d\n", !!nl80211);
+	// fprintf(stderr, "genl_ctrl_search_by_name=%d\n", !!nl80211);
 
 	if(nl80211)
 	{
 		_nl80211_type = genl_family_get_id(nl80211);
-		fprintf(stderr, "_nl80211_type=%d\n", _nl80211_type);
+		// fprintf(stderr, "_nl80211_type=%d\n", _nl80211_type);
 	}
 
 	nl_cache_free(nl_cache);
@@ -213,9 +213,9 @@ void handle_nl_msg(struct nl_msg *msg)
 	if(nlmsg_get_proto(msg) != NETLINK_GENERIC)
 		return;
 
-	fprintf(stderr, "nlmsg_parse\n");
+	// fprintf(stderr, "nlmsg_parse\n");
 	retval = nlmsg_parse(nlh, GENL_HDRLEN, attr, NL80211_ATTR_MAX, policy);
-	fprintf(stderr, "retval=%d\n", retval);
+	// fprintf(stderr, "retval=%d\n", retval);
 	if(retval)
 		return;
 
@@ -227,22 +227,26 @@ void handle_nl_msg(struct nl_msg *msg)
 			return;
 		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
 			return;
-		fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
+		// fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
 
 		if(attr[NL80211_ATTR_WIPHY_FREQ])
 		{
 			int freq = nla_get_u32(attr[NL80211_ATTR_WIPHY_FREQ]);
 			chan = frequency_to_channel(freq);
-			fprintf(stderr, "NL80211_ATTR_WIPHY_FREQ = %u (%d)\n", freq, chan);
+			// fprintf(stderr, "NL80211_ATTR_WIPHY_FREQ = %u (%d)\n", freq, chan);
 					}
 		if(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE])
-			fprintf(stderr, "NL80211_ATTR_WIPHY_CHANNEL_TYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE]));
+		{
+			// fprintf(stderr, "NL80211_ATTR_WIPHY_CHANNEL_TYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE]));
+		}
 		if(attr[NL80211_ATTR_CHANNEL_WIDTH])
-			fprintf(stderr, "NL80211_ATTR_CHANNEL_WIDTH = %u\n", nla_get_u32(attr[NL80211_ATTR_CHANNEL_WIDTH]));
+		{
+			// fprintf(stderr, "NL80211_ATTR_CHANNEL_WIDTH = %u\n", nla_get_u32(attr[NL80211_ATTR_CHANNEL_WIDTH]));
+		}
 		if(attr[NL80211_ATTR_CENTER_FREQ1])
 		{
 			int freq = nla_get_u32(attr[NL80211_ATTR_CENTER_FREQ1]);
-			fprintf(stderr, "NL80211_ATTR_CENTER_FREQ1 = %u\n", freq, frequency_to_channel(freq));
+			// fprintf(stderr, "NL80211_ATTR_CENTER_FREQ1 = %u\n", freq, frequency_to_channel(freq));
 		}
 		// this device doesn't support 80+80 anyway
 		// if(attr[NL80211_ATTR_CENTER_FREQ2])
@@ -257,11 +261,13 @@ void handle_nl_msg(struct nl_msg *msg)
 			return;
 		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
 			return;
-		fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
+		// fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
 
 		// we should set monitor/managed mode based on this message
 		if(attr[NL80211_ATTR_IFTYPE])
-			fprintf(stderr, "NL80211_ATTR_IFTYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_IFTYPE]));
+		{
+			// fprintf(stderr, "NL80211_ATTR_IFTYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_IFTYPE]));
+		}
 	}
 
 }
@@ -272,7 +278,7 @@ int nl_send_auto_complete(struct nl_sock *sk, struct nl_msg *msg)
 
 	ret = func_nl_send_auto_complete(sk, msg);
 
-	fprintf(stderr, "\nnl_send_auto_complete()\n");
+	// fprintf(stderr, "\nnl_send_auto_complete()\n");
 	handle_nl_msg(msg);
 	return ret;
 }
@@ -303,7 +309,7 @@ int nex_set_channel(uint32 channel) // , uint32 band, uint32 bw, uint32 ctl_sb)
 	ctl_sb = 0;
 
 	*chanspec = (channel | band | bw | ctl_sb);
-	fprintf(stderr, "setting channel: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
+	// fprintf(stderr, "setting channel: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
 	return nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
 }
 
