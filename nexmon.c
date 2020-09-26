@@ -54,6 +54,18 @@
 #include <nexioctls.h>
 #include <string.h>
 
+#define CONFIG_LIBNL
+
+#ifdef CONFIG_LIBNL
+#include <linux/nl80211.h>
+#include <netlink/genl/genl.h>
+#include <netlink/genl/family.h>
+#include <netlink/genl/ctrl.h>
+#include <netlink/msg.h>
+#include <netlink/attr.h>
+#include <linux/genetlink.h>
+#endif // CONFIG_LIBNL
+
 #define __USE_POSIX199309
 #define _POSIX_C_SOURCE 199309L
 #include <time.h>
@@ -82,6 +94,12 @@ extern struct nexio *nex_init_ioctl(const char *ifname);
 #endif
 
 #define REAL_LIBC RTLD_NEXT
+#ifdef CONFIG_LIBNL
+#define REAL_LIBNL RTLD_NEXT
+#endif // CONFIG_LIBNL
+
+int frequency_to_channel(int);
+int nex_set_channel(uint32);
 
 typedef int request_t;
 
@@ -96,6 +114,9 @@ static int (*func_ioctl) (int, request_t, void *) = NULL;
 static int (*func_socket) (int, int, int) = NULL;
 static int (*func_bind) (int, const struct sockaddr *, int) = NULL;
 static int (*func_write) (int, const void *, size_t) = NULL;
+#ifdef CONFIG_LIBNL
+static int (*func_nl_send_auto_complete) (struct nl_sock *, struct nl_msg *) = NULL;
+#endif // CONFIG_LIBNL
 
 static void _libmexmon_init() __attribute__ ((constructor));
 static void _libmexmon_init() {
@@ -115,6 +136,175 @@ static void _libmexmon_init() {
 
     if (! func_sendto)
         func_sendto = (int (*) (int, const void *, size_t, int, const struct sockaddr *, socklen_t)) dlsym (REAL_LIBC, "sendto");
+
+#ifdef CONFIG_LIBNL
+    if (! func_nl_send_auto_complete)
+	func_nl_send_auto_complete = (int (*) (struct nl_sock *, struct nl_msg *)) dlsym(REAL_LIBNL, "nl_send_auto_complete");
+#endif // CONFIG_LIBNL
+}
+
+#ifdef CONFIG_LIBNL
+static int _nl80211_type = 0;
+int nl80211_type()
+{
+	if(_nl80211_type)
+	{
+		fprintf(stderr, "cached\n");
+		return _nl80211_type;
+	}
+		
+	int rval;
+	struct nl_sock *nl_sock = NULL;
+	struct nl_cache *nl_cache = NULL;
+	struct genl_family *nl80211 = NULL;
+
+	fprintf(stderr, "beginning\n");
+	nl_sock = nl_socket_alloc();
+	fprintf(stderr, "nl_sock=%d\n", nl_sock);
+	if(!nl_sock)
+		return 0;
+
+	rval = genl_connect(nl_sock);
+	fprintf(stderr, "genl_connect=%d\n", rval);
+	if(rval)
+	{
+		nl_socket_free(nl_sock);
+		return 0;
+	}
+
+	rval = genl_ctrl_alloc_cache(nl_sock, &nl_cache);
+	fprintf(stderr, "genl_ctrl_allocate_cache=%d\n", rval);
+	if(rval)
+	{
+		nl_socket_free(nl_sock);
+		return 0;
+	}
+
+	nl80211 = genl_ctrl_search_by_name(nl_cache, "nl80211");
+	fprintf(stderr, "genl_ctrl_search_by_name=%d\n", !!nl80211);
+
+	if(nl80211)
+	{
+		_nl80211_type = genl_family_get_id(nl80211);
+		fprintf(stderr, "_nl80211_type=%d\n", _nl80211_type);
+	}
+
+	nl_cache_free(nl_cache);
+	nl_socket_free(nl_sock);
+	return _nl80211_type;
+}
+
+void handle_nl_msg(struct nl_msg *msg)
+{
+	int retval;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct nlattr *attr[NL80211_ATTR_MAX+1];
+	struct nla_policy policy[4] = {
+		[0] = { .type = NLA_U32 },
+		};
+
+	nlh = nlmsg_hdr(msg);
+
+
+	// if this isn't an nl80211 message, we don't want it                                                                                                             
+	if(nlh->nlmsg_type != nl80211_type())                                                                                                                             
+		return;                                                                                                                                                   
+	if(nlmsg_get_proto(msg) != NETLINK_GENERIC)
+		return;
+
+	fprintf(stderr, "nlmsg_parse\n");
+	retval = nlmsg_parse(nlh, GENL_HDRLEN, attr, NL80211_ATTR_MAX, policy);
+	fprintf(stderr, "retval=%d\n", retval);
+	if(retval)
+		return;
+
+	ghdr = nlmsg_data(nlh);
+	if(ghdr->cmd == NL80211_CMD_SET_WIPHY)
+	{
+		int chan = 0;
+		if(!attr[NL80211_ATTR_IFINDEX])
+			return;
+		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
+			return;
+		fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
+
+		if(attr[NL80211_ATTR_WIPHY_FREQ])
+		{
+			int freq = nla_get_u32(attr[NL80211_ATTR_WIPHY_FREQ]);
+			chan = frequency_to_channel(freq);
+			fprintf(stderr, "NL80211_ATTR_WIPHY_FREQ = %u (%d)\n", freq, chan);
+					}
+		if(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE])
+			fprintf(stderr, "NL80211_ATTR_WIPHY_CHANNEL_TYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE]));
+		if(attr[NL80211_ATTR_CHANNEL_WIDTH])
+			fprintf(stderr, "NL80211_ATTR_CHANNEL_WIDTH = %u\n", nla_get_u32(attr[NL80211_ATTR_CHANNEL_WIDTH]));
+		if(attr[NL80211_ATTR_CENTER_FREQ1])
+		{
+			int freq = nla_get_u32(attr[NL80211_ATTR_CENTER_FREQ1]);
+			fprintf(stderr, "NL80211_ATTR_CENTER_FREQ1 = %u\n", freq, frequency_to_channel(freq));
+		}
+		// this device doesn't support 80+80 anyway
+		// if(attr[NL80211_ATTR_CENTER_FREQ2])
+		//	fprintf(stderr, "NL80211_ATTR_CENTER_FREQ2 = %u\n", nla_get_u32(attr[NL80211_ATTR_CENTER_FREQ2]));
+		if(chan)
+			nex_set_channel(chan);
+
+	}
+	if(ghdr->cmd == NL80211_CMD_SET_INTERFACE)
+	{
+		if(!attr[NL80211_ATTR_IFINDEX])
+			return;
+		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
+			return;
+		fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
+
+		// we should set monitor/managed mode based on this message
+		if(attr[NL80211_ATTR_IFTYPE])
+			fprintf(stderr, "NL80211_ATTR_IFTYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_IFTYPE]));
+	}
+
+}
+
+int nl_send_auto_complete(struct nl_sock *sk, struct nl_msg *msg)
+{
+	int ret;
+
+	ret = func_nl_send_auto_complete(sk, msg);
+
+	fprintf(stderr, "\nnl_send_auto_complete()\n");
+	handle_nl_msg(msg);
+	return ret;
+}
+#endif // CONFIG_LIBNL
+
+int frequency_to_channel(int freq_in_MHz)
+{
+	if(freq_in_MHz == 2484)
+		return 14;
+	if(freq_in_MHz >= 2412 && freq_in_MHz <= 2472)
+		return (freq_in_MHz-2407)/5;
+	if(freq_in_MHz >= 5000 && freq_in_MHz <= 6000)
+		return (freq_in_MHz-5000)/5;
+
+	return 0;
+}
+
+int nex_set_channel(uint32 channel) // , uint32 band, uint32 bw, uint32 ctl_sb)
+{
+	char charbuf[13] = "chanspec";
+	uint32 *chanspec = (uint32*) &charbuf[9];
+	uint32 band;
+	uint32 bw;
+	uint32 ctl_sb;
+
+	band = ((channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G);
+	bw = WL_CHANSPEC_BW_20;
+	ctl_sb = 0;
+
+	*chanspec = (channel | band | bw | ctl_sb);
+	fprintf(stderr, "setting channel: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
+	return nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
 }
 
 int
@@ -185,6 +375,13 @@ ioctl(int fd, request_t request, ...)
             }
             break;
 
+	// check these for hcxdumptool compatibility?  https://github.com/ZerBea/hcxdumptool/blob/master/hcxdumptool.c
+	// case SIOCGIFFLAGS:
+	// case SIOCSIFFLAGS:
+	//     printf("saw it: %d\n", request);
+	//     ret = 0;
+	//     break;
+
         case SIOCSIWFREQ: // set channel/frequency (Hz)
             {
                 struct iwreq* p_wrq = (struct iwreq*) argp;
@@ -212,6 +409,7 @@ ioctl(int fd, request_t request, ...)
 		    *chanspec = (channel | band | bw | ctl_sb);
 		    // fprintf(stderr, "SIWFREQ: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
 		    ret = nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
+
                 }
 
                 //if (ret < 0)
