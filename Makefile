@@ -1,6 +1,6 @@
 CC = gcc
 
-CFLAGS = -std=c99 -I./
+CFLAGS = -std=c99 -I./ -I/usr/include/libnl3
 LDFLAGS = -shared -fPIC -ldl libnexio.a
 
 all: libnexio.a libnexmonkali.so
