@@ -99,7 +99,8 @@ extern struct nexio *nex_init_ioctl(const char *ifname);
 #endif // CONFIG_LIBNL
 
 int frequency_to_channel(int);
-int nex_set_channel(uint32);
+int nex_set_channel_simple(int);
+int nex_set_channel_full(uint32, uint32, uint32, uint32);
 
 typedef int request_t;
 
@@ -223,6 +224,8 @@ void handle_nl_msg(struct nl_msg *msg)
 	if(ghdr->cmd == NL80211_CMD_SET_WIPHY)
 	{
 		int chan = 0;
+		int bandwidth = WL_CHANSPEC_BW_20;
+		int offset_chan = 0;
 		if(!attr[NL80211_ATTR_IFINDEX])
 			return;
 		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
@@ -252,7 +255,7 @@ void handle_nl_msg(struct nl_msg *msg)
 		// if(attr[NL80211_ATTR_CENTER_FREQ2])
 		//	fprintf(stderr, "NL80211_ATTR_CENTER_FREQ2 = %u\n", nla_get_u32(attr[NL80211_ATTR_CENTER_FREQ2]));
 		if(chan)
-			nex_set_channel(chan);
+			nex_set_channel_simple(chan);
 
 	}
 	if(ghdr->cmd == NL80211_CMD_SET_INTERFACE)
@@ -272,6 +275,7 @@ void handle_nl_msg(struct nl_msg *msg)
 
 }
 
+// there are several other functions that can send netlink messages, but it looks like airodump-ng and kismet both use this one, so this is good enough for now
 int nl_send_auto_complete(struct nl_sock *sk, struct nl_msg *msg)
 {
 	int ret;
@@ -296,17 +300,16 @@ int frequency_to_channel(int freq_in_MHz)
 	return 0;
 }
 
-int nex_set_channel(uint32 channel) // , uint32 band, uint32 bw, uint32 ctl_sb)
+int nex_set_channel_simple(int channel)
+{
+	int band = ((channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G);
+	return nex_set_channel_full(channel, band, WL_CHANSPEC_BW_20, 0);
+}
+
+int nex_set_channel_full(uint32 channel, uint32 band, uint32 bw, uint32 ctl_sb)
 {
 	char charbuf[13] = "chanspec";
 	uint32 *chanspec = (uint32*) &charbuf[9];
-	uint32 band;
-	uint32 bw;
-	uint32 ctl_sb;
-
-	band = ((channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G);
-	bw = WL_CHANSPEC_BW_20;
-	ctl_sb = 0;
 
 	*chanspec = (channel | band | bw | ctl_sb);
 	// fprintf(stderr, "setting channel: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
@@ -381,40 +384,34 @@ ioctl(int fd, request_t request, ...)
             }
             break;
 
-	// check these for hcxdumptool compatibility?  https://github.com/ZerBea/hcxdumptool/blob/master/hcxdumptool.c
-	// case SIOCGIFFLAGS:
-	// case SIOCSIFFLAGS:
-	//     printf("saw it: %d\n", request);
-	//     ret = 0;
-	//     break;
-
         case SIOCSIWFREQ: // set channel/frequency (Hz)
             {
                 struct iwreq* p_wrq = (struct iwreq*) argp;
 
-		// TODO:
-		// check freq.e == 0
-		// check freq.m < 1000
-		// handle freqs instead of channels
-		// handle alternate bandwidths?
-		// handle upper/lower sidebands?
                 if (!strncmp(p_wrq->ifr_ifrn.ifrn_name, ifname, strlen(ifname))) {
 		    char charbuf[13] = "chanspec";
 		    uint32 *chanspec = (uint32*) &charbuf[9];
-		    uint32 channel;
-		    uint32 band;
-		    uint32 bw;
-		    uint32 ctl_sb;
+		    int channel = p_wrq->u.freq.m;
+		    int exp = p_wrq->u.freq.e;
 
-		    // fprintf(stderr, "SIWFREQ: chan/freq: m=%d e=%d\n", p_wrq->u.freq.m, p_wrq->u.freq.e);
-		    channel = p_wrq->u.freq.m;
-		    band = ((channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G);
-		    bw = WL_CHANSPEC_BW_20;
-		    ctl_sb = 0;
+		    // TODO: test this!
+		    // fprintf(stderr, "SIWFREQ: chan/freq: m=%d e=%d\n", channel, exp);
+		    // if this is > 500 (or 1000, depending on the source), it's a frequency, not a channel
+		    if(channel > 500 || exp > 0)
+			    // convert from Hz to MHz
+			    if(exp < 6)
+			    {
+				    for(int i=0;i<exp; i++)
+					    channel *= 10;
+				    channel /= 1000000;
+			    else
+				    for(int i=6;i<exp;i++)
+					    channel *= 10;
+			    // convert from frequency to channel
+			    channel = frequency_to_channel(channel);
 
-		    *chanspec = (channel | band | bw | ctl_sb);
-		    // fprintf(stderr, "SIWFREQ: channel=%08x   band=%08x   bw=%08x  ctl_sb=%08x  chanspec=%08x\n", channel, band, bw, ctl_sb, *chanspec);
-		    ret = nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
+		    // fprintf(stderr, "SIWFREQ: channel=%08x", channel);
+		    ret = nex_set_channel_simple(channel);
 
                 }
 
@@ -612,15 +609,14 @@ write(int fd, const void *buf, size_t count)
         memcpy(buf_dup->data, buf, count);
 
         nex_ioctl(nexio, NEX_INJECT_FRAME, buf_dup, count + sizeof(struct inject_frame), true);
+	free(buf_dup);
+
 	// this is probably frowned on, but it works on the Nexus 6P
 	// rate-limiting keeps the driver from crashing when doing aireplay-ng
 	struct timespec ts;
         ts.tv_sec = 0;
         ts.tv_nsec = 50 * 1000000; // 50 ms
         nanosleep(&ts, NULL);
-
-
-        free(buf_dup);
 
         ret = count;
     } else {
