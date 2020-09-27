@@ -398,19 +398,24 @@ ioctl(int fd, request_t request, ...)
 		    // fprintf(stderr, "SIWFREQ: chan/freq: m=%d e=%d\n", channel, exp);
 		    // if this is > 500 (or 1000, depending on the source), it's a frequency, not a channel
 		    if(channel > 500 || exp > 0)
+		    {
 			    // convert from Hz to MHz
 			    if(exp < 6)
 			    {
 				    for(int i=0;i<exp; i++)
 					    channel *= 10;
 				    channel /= 1000000;
+			    }
 			    else
+			    {
 				    for(int i=6;i<exp;i++)
 					    channel *= 10;
+			    }
 			    // convert from frequency to channel
 			    channel = frequency_to_channel(channel);
+		    }
 
-		    // fprintf(stderr, "SIWFREQ: channel=%08x", channel);
+		    // fprintf(stderr, "SIWFREQ: channel=%08x\n", channel);
 		    ret = nex_set_channel_simple(channel);
 
                 }
@@ -608,6 +613,7 @@ write(int fd, const void *buf, size_t count)
         buf_dup->type = 1;
         memcpy(buf_dup->data, buf, count);
 
+	// fprintf(stderr, "injecting!\n");
         nex_ioctl(nexio, NEX_INJECT_FRAME, buf_dup, count + sizeof(struct inject_frame), true);
 	free(buf_dup);
 
