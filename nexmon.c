@@ -224,8 +224,11 @@ void handle_nl_msg(struct nl_msg *msg)
 	if(ghdr->cmd == NL80211_CMD_SET_WIPHY)
 	{
 		int chan = 0;
+		int ht_mode = NL80211_CHAN_HT20;
 		int bandwidth = WL_CHANSPEC_BW_20;
-		int offset_chan = 0;
+		int band = WL_CHANSPEC_BAND_2G;
+		int ctl_sb = 0;
+
 		if(!attr[NL80211_ATTR_IFINDEX])
 			return;
 		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
@@ -236,26 +239,58 @@ void handle_nl_msg(struct nl_msg *msg)
 		{
 			int freq = nla_get_u32(attr[NL80211_ATTR_WIPHY_FREQ]);
 			chan = frequency_to_channel(freq);
+			if(freq >= 5000)
+				band = WL_CHANSPEC_BAND_5G;
 			// fprintf(stderr, "NL80211_ATTR_WIPHY_FREQ = %u (%d)\n", freq, chan);
 					}
+		// HT20/HT40-/HT40+/...  there are more but our device doesn't support that anyway
 		if(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE])
 		{
+			ht_mode = nla_get_u32(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE]);
 			// fprintf(stderr, "NL80211_ATTR_WIPHY_CHANNEL_TYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_WIPHY_CHANNEL_TYPE]));
 		}
 		if(attr[NL80211_ATTR_CHANNEL_WIDTH])
 		{
+			if(nla_get_u32(attr[NL80211_ATTR_CHANNEL_WIDTH]) == NL80211_CHAN_WIDTH_40)
+				bandwidth = WL_CHANSPEC_BW_40;
 			// fprintf(stderr, "NL80211_ATTR_CHANNEL_WIDTH = %u\n", nla_get_u32(attr[NL80211_ATTR_CHANNEL_WIDTH]));
 		}
 		if(attr[NL80211_ATTR_CENTER_FREQ1])
 		{
 			int freq = nla_get_u32(attr[NL80211_ATTR_CENTER_FREQ1]);
+			int ctl_chan = frequency_to_channel(freq);
+			if(ctl_chan > chan)
+				ctl_sb = WL_CHANSPEC_CTL_SB_LLL;
+			else if (ctl_chan < chan)
+				ctl_sb = WL_CHANSPEC_CTL_SB_LLU;
+			chan = ctl_chan;
 			// fprintf(stderr, "NL80211_ATTR_CENTER_FREQ1 = %u\n", freq, frequency_to_channel(freq));
 		}
 		// this device doesn't support 80+80 anyway
 		// if(attr[NL80211_ATTR_CENTER_FREQ2])
 		//	fprintf(stderr, "NL80211_ATTR_CENTER_FREQ2 = %u\n", nla_get_u32(attr[NL80211_ATTR_CENTER_FREQ2]));
+
+		if(ht_mode == NL80211_CHAN_HT40PLUS)
+		{
+			if(band == WL_CHANSPEC_BAND_2G)
+			{
+				bandwidth = WL_CHANSPEC_BW_40;
+				chan = LOWER_20_SB(chan);
+				ctl_sb = WL_CHANSPEC_CTL_SB_LLU;
+			}
+			else
+				ht_mode = NL80211_CHAN_HT40MINUS; // there is only one sideband allowed for 40MHz in 5G band
+		}
+		if(ht_mode == NL80211_CHAN_HT40MINUS)
+		{
+			bandwidth = WL_CHANSPEC_BW_40;
+			chan = UPPER_20_SB(chan);
+			ctl_sb = WL_CHANSPEC_CTL_SB_LLL;
+		}
+
 		if(chan)
-			nex_set_channel_simple(chan);
+			// nex_set_channel_simple(chan);
+			nex_set_channel_full(chan, band, bandwidth, ctl_sb);
 
 	}
 	if(ghdr->cmd == NL80211_CMD_SET_INTERFACE)
@@ -266,7 +301,7 @@ void handle_nl_msg(struct nl_msg *msg)
 			return;
 		// fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
 
-		// we should set monitor/managed mode based on this message
+		// we could set monitor/managed mode based on this message
 		if(attr[NL80211_ATTR_IFTYPE])
 		{
 			// fprintf(stderr, "NL80211_ATTR_IFTYPE = %u\n", nla_get_u32(attr[NL80211_ATTR_IFTYPE]));
