@@ -31,6 +31,9 @@ chanspec: 0xd024, 36
 Clone the repo:
   git clone https://github.com/dracode/libnexmonkali
 
+Install dependencies:
+  apt install libnl-3-dev
+  
 Build:
   make
   
