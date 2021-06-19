@@ -117,11 +117,11 @@ __nex_driver_io(struct ifreq *ifr, struct nex_ioctl *ioc)
 
     /* open socket to kernel */
     if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
-        printf("error: socket\n");
+        fprintf(stderr, "error: socket\n");
 
     ret = ioctl(s, SIOCDEVPRIVATE, ifr);
     if (ret < 0 && errno != EAGAIN)
-        printf("%s: error\n", __FUNCTION__);
+        fprintf(stderr, "%s: error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
 
     /* cleanup */
     close(s);
@@ -159,7 +159,7 @@ __nex_driver_udp(struct nexio *nexio, struct nex_ioctl *ioc)
 
 	if (rx_frame_len < 0) {
 		ret = -1;
-		printf("ERR (%s): no valid answer received\n", __FUNCTION__);
+		fprintf(stderr, "ERR (%s): no valid answer received\n", __FUNCTION__);
 	}
 
 	return ret;
@@ -209,7 +209,7 @@ __nex_driver_netlink(struct nexio *nexio, struct nex_ioctl *ioc)
 
         if (rx_frame_len < 0) {
                 ret = -1;
-                printf("ERR (%s): no valid answer received\n", __FUNCTION__);
+                fprintf(stderr, "ERR (%s): no valid answer received\n", __FUNCTION__);
         }
 
         return ret;
@@ -244,10 +244,10 @@ nex_ioctl(struct nexio *nexio, int cmd, void *buf, int len, bool set)
 			ret = __nex_driver_netlink(nexio, &ioc);
 			break;
 		default:
-			printf("%s: not initialized correctly\n", __FUNCTION__);
+			fprintf(stderr, "%s: not initialized correctly\n", __FUNCTION__);
 	}
     } else {
-        printf("%s: not initialized\n", __FUNCTION__);
+        fprintf(stderr, "%s: not initialized\n", __FUNCTION__);
     }
 
     if (ret < 0 && cmd != WLC_GET_MAGIC)
@@ -345,9 +345,9 @@ nex_init_netlink(void)
     snl_rx_ioctl->nl_pid = getpid();
 
     nexio->sock_tx = socket(PF_NETLINK, SOCK_RAW, NETLINK_USER);
-    if (nexio->sock_tx < 0) printf("%s: socket error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
+    if (nexio->sock_tx < 0) fprintf(stderr, "%s: socket error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
     nexio->sock_rx_ioctl = socket(PF_NETLINK, SOCK_RAW, NETLINK_USER);
-    if (nexio->sock_rx_ioctl < 0) printf("%s: socket error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
+    if (nexio->sock_rx_ioctl < 0) fprintf(stderr, "%s: socket error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
 
     // Set 1 second timeout on ioctl receive socket
     struct timeval tv = {
@@ -358,10 +358,10 @@ nex_init_netlink(void)
 
 //    printf("%s: Before connect\n", __FUNCTION__);
     err = bind(nexio->sock_rx_ioctl, (struct sockaddr *) snl_rx_ioctl, sizeof(struct sockaddr));
-    if (err) printf("%s: bind error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
+    if (err) fprintf(stderr, "%s: bind error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
 
     err = connect(nexio->sock_tx, (struct sockaddr *) snl_tx, sizeof(struct sockaddr));
-    if (err) printf("%s: connect error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
+    if (err) fprintf(stderr, "%s: connect error (%d: %s)\n", __FUNCTION__, errno, strerror(errno));
 
 //    printf("%s: Exit\n", __FUNCTION__);
 
