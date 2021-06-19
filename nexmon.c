@@ -195,7 +195,7 @@ int nl80211_type()
 	return _nl80211_type;
 }
 
-void handle_nl_msg(struct nl_msg *msg)
+int handle_nl_msg(struct nl_msg *msg)
 {
 	int retval;
 	struct nlmsghdr *nlh;
@@ -209,16 +209,16 @@ void handle_nl_msg(struct nl_msg *msg)
 
 
 	// if this isn't an nl80211 message, we don't want it                                                                                                             
-	if(nlh->nlmsg_type != nl80211_type())                                                                                                                             
-		return;                                                                                                                                                   
+	if(nlh->nlmsg_type != nl80211_type())
+		return 0;
 	if(nlmsg_get_proto(msg) != NETLINK_GENERIC)
-		return;
+		return 0;
 
 	// fprintf(stderr, "nlmsg_parse\n");
 	retval = nlmsg_parse(nlh, GENL_HDRLEN, attr, NL80211_ATTR_MAX, policy);
 	// fprintf(stderr, "retval=%d\n", retval);
 	if(retval)
-		return;
+		return 0;
 
 	ghdr = nlmsg_data(nlh);
 	if(ghdr->cmd == NL80211_CMD_SET_WIPHY)
@@ -230,9 +230,9 @@ void handle_nl_msg(struct nl_msg *msg)
 		int ctl_sb = 0;
 
 		if(!attr[NL80211_ATTR_IFINDEX])
-			return;
+			return 0;
 		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
-			return;
+			return 0;
 		// fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
 
 		if(attr[NL80211_ATTR_WIPHY_FREQ])
@@ -290,15 +290,15 @@ void handle_nl_msg(struct nl_msg *msg)
 
 		if(chan)
 			// nex_set_channel_simple(chan);
-			nex_set_channel_full(chan, band, bandwidth, ctl_sb);
+			return nex_set_channel_full(chan, band, bandwidth, ctl_sb);
 
 	}
 	if(ghdr->cmd == NL80211_CMD_SET_INTERFACE)
 	{
 		if(!attr[NL80211_ATTR_IFINDEX])
-			return;
+			return 0;
 		if( nla_get_u32(attr[NL80211_ATTR_IFINDEX]) != if_nametoindex(ifname))
-			return;
+			return 0;
 		// fprintf(stderr, "NL80211_ATTR_IFINDEX = %u\n", nla_get_u32(attr[NL80211_ATTR_IFINDEX]));
 
 		// we could set monitor/managed mode based on this message
@@ -308,6 +308,7 @@ void handle_nl_msg(struct nl_msg *msg)
 		}
 	}
 
+	return 0;
 }
 
 // there are several other functions that can send netlink messages, but it looks like airodump-ng and kismet both use this one, so this is good enough for now
@@ -318,7 +319,7 @@ int nl_send_auto_complete(struct nl_sock *sk, struct nl_msg *msg)
 	ret = func_nl_send_auto_complete(sk, msg);
 
 	// fprintf(stderr, "\nnl_send_auto_complete()\n");
-	handle_nl_msg(msg);
+	ret = handle_nl_msg(msg);
 	return ret;
 }
 #endif // CONFIG_LIBNL
